@@ -29,10 +29,10 @@ def detect_platform(url: str) -> str:
     return 'unknown'
 
 
-def get_format_string(platform: str, fmt: str, quality: str) -> str:
-    """Формує рядок формату для yt-dlp"""
+def get_format_string(fmt: str, quality: str) -> str:
     if fmt == 'audio':
-        return 'bestaudio/best'
+        # Качаємо тільки аудіо потік, потім перейменуємо на .mp3
+        return 'bestaudio[ext=m4a]/bestaudio'
 
     q_map = {'1080': 1080, '720': 720, '480': 480}
     max_h = q_map.get(quality, 9999)
@@ -42,45 +42,15 @@ def get_format_string(platform: str, fmt: str, quality: str) -> str:
     return f'bestvideo[height<={max_h}]+bestaudio/best[height<={max_h}]/best[height<={max_h}]'
 
 
-def get_info(url: str) -> str:
-    """Отримує інформацію про відео без завантаження. Повертає JSON."""
-    platform = detect_platform(url)
-    opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': False,
-    }
-    if platform == 'youtube':
-        opts['extractor_args'] = {'youtube': {'player_client': ['android', 'web']}}
-
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return json.dumps({
-                'success': True,
-                'title': info.get('title', 'Без назви'),
-                'duration': info.get('duration', 0),
-                'platform': platform,
-                'thumbnail': info.get('thumbnail', ''),
-                'uploader': info.get('uploader', ''),
-            })
-    except Exception as e:
-        return json.dumps({'success': False, 'error': str(e)})
-
-
 def download(url: str, fmt: str, quality: str, output_dir: str) -> str:
     """
     Завантажує відео/аудіо.
-    Повертає JSON з результатом.
-    
     fmt: 'video' | 'audio'
     quality: 'best' | '1080' | '720' | '480'
-    output_dir: шлях до папки Downloads
     """
     platform = detect_platform(url)
-    format_str = get_format_string(platform, fmt, quality)
+    format_str = get_format_string(fmt, quality)
 
-    # Шаблон назви файлу
     outtmpl = os.path.join(output_dir, '%(title).80s.%(ext)s')
 
     opts = {
@@ -89,22 +59,16 @@ def download(url: str, fmt: str, quality: str, output_dir: str) -> str:
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        'merge_output_format': 'mp4' if fmt == 'video' else None,
+        # Без postprocessors — не потрібен ffmpeg
     }
 
-    # Аудіо — конвертуємо в mp3
-    if fmt == 'audio':
-        opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }]
+    if fmt == 'video':
+        opts['merge_output_format'] = 'mp4'
 
     # YouTube — обходимо JS runtime
     if platform == 'youtube':
         opts['extractor_args'] = {'youtube': {'player_client': ['android', 'web']}}
 
-    # Зберігаємо фінальний шлях
     downloaded_files = []
 
     def progress_hook(d):
@@ -121,27 +85,28 @@ def download(url: str, fmt: str, quality: str, output_dir: str) -> str:
         # Шукаємо збережений файл
         file_path = ''
         if downloaded_files:
-            # Якщо аудіо — шлях змінився після конвертації (mp3)
-            if fmt == 'audio':
-                base = os.path.splitext(downloaded_files[-1])[0]
-                mp3 = base + '.mp3'
-                file_path = mp3 if os.path.exists(mp3) else downloaded_files[-1]
+            candidate = downloaded_files[-1]
+            # Для відео перевіряємо чи є mp4 версія
+            if fmt == 'video':
+                mp4 = os.path.splitext(candidate)[0] + '.mp4'
+                file_path = mp4 if os.path.exists(mp4) else candidate
             else:
-                # Для відео — шукаємо mp4
-                base = os.path.splitext(downloaded_files[-1])[0]
-                mp4 = base + '.mp4'
-                file_path = mp4 if os.path.exists(mp4) else downloaded_files[-1]
+                # Аудіо — перейменовуємо на .mp3
+                mp3_path = os.path.splitext(candidate)[0] + '.mp3'
+                if os.path.exists(candidate):
+                    os.rename(candidate, mp3_path)
+                file_path = mp3_path
 
-        # Якщо шлях не знайшли — шукаємо найновіший файл у папці
+        # Fallback — найновіший файл у папці
         if not file_path or not os.path.exists(file_path):
-            ext = 'mp3' if fmt == 'audio' else 'mp4'
-            files = [
-                os.path.join(output_dir, f)
-                for f in os.listdir(output_dir)
-                if f.endswith(f'.{ext}')
-            ]
-            if files:
-                file_path = max(files, key=os.path.getmtime)
+            exts = ['mp4', 'webm', 'mkv'] if fmt == 'video' else ['mp3', 'm4a', 'webm', 'opus']
+            all_files = []
+            for f in os.listdir(output_dir):
+                if any(f.endswith(f'.{e}') for e in exts):
+                    full = os.path.join(output_dir, f)
+                    all_files.append((os.path.getmtime(full), full))
+            if all_files:
+                file_path = sorted(all_files)[-1][1]
 
         if not file_path or not os.path.exists(file_path):
             return json.dumps({'success': False, 'error': 'Файл не знайдено після завантаження'})
