@@ -44,7 +44,6 @@
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
                     android:hint="@string/hint_url"
-                    android:hintTextColor="@color/text_secondary"
                     android:textColor="@color/text_primary"
                     android:textSize="13sp"
                     android:inputType="textUri"
