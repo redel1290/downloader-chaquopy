@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Downloader</string>
+    <string name="hint_url">Вставте посилання на відео…</string>
+    <string name="btn_paste">Вставити</string>
+    <string name="btn_download">Завантажити</string>
+    <string name="tab_download">⬇ Завантажити</string>
+    <string name="tab_history">📋 Історія</string>
+    <string name="platforms">YouTube • TikTok • Instagram • Twitter/X • Twitch • SoundCloud • Vimeo • Facebook</string>
+</resources>

@@ -1,0 +1,239 @@
+package com.lunyx.downloader.fragments
+
+import android.Manifest
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.view.*
+import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import com.lunyx.downloader.R
+import com.lunyx.downloader.utils.Prefs
+import com.lunyx.downloader.utils.PythonDownloader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+class DownloadFragment : Fragment() {
+
+    private lateinit var etUrl: EditText
+    private lateinit var btnPaste: TextView
+    private lateinit var btnDownload: TextView
+    private lateinit var rgFormat: RadioGroup
+    private lateinit var rgQuality: RadioGroup
+    private lateinit var cardProgress: View
+    private lateinit var cardResult: View
+    private lateinit var tvStatus: TextView
+    private lateinit var tvPercent: TextView
+    private lateinit var tvProgressDetail: TextView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var tvResultIcon: TextView
+    private lateinit var tvResultTitle: TextView
+    private lateinit var tvResultMeta: TextView
+    private lateinit var btnOpen: TextView
+    private lateinit var btnShare: TextView
+
+    private var lastFilePath: String? = null
+    private var lastFormat: String = "mp4"
+
+    private val permLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        if (perms.values.all { it }) startDownload()
+        else Toast.makeText(requireContext(), "Потрібен дозвіл для збереження", Toast.LENGTH_LONG).show()
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+    ): View = inflater.inflate(R.layout.fragment_download, container, false)
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        etUrl = view.findViewById(R.id.etUrl)
+        btnPaste = view.findViewById(R.id.btnPaste)
+        btnDownload = view.findViewById(R.id.btnDownload)
+        rgFormat = view.findViewById(R.id.rgFormat)
+        rgQuality = view.findViewById(R.id.rgQuality)
+        cardProgress = view.findViewById(R.id.cardProgress)
+        cardResult = view.findViewById(R.id.cardResult)
+        tvStatus = view.findViewById(R.id.tvStatus)
+        tvPercent = view.findViewById(R.id.tvPercent)
+        tvProgressDetail = view.findViewById(R.id.tvProgressDetail)
+        progressBar = view.findViewById(R.id.progressBar)
+        tvResultIcon = view.findViewById(R.id.tvResultIcon)
+        tvResultTitle = view.findViewById(R.id.tvResultTitle)
+        tvResultMeta = view.findViewById(R.id.tvResultMeta)
+        btnOpen = view.findViewById(R.id.btnOpen)
+        btnShare = view.findViewById(R.id.btnShare)
+
+        btnPaste.setOnClickListener { pasteUrl() }
+        btnDownload.setOnClickListener { checkPermAndDownload() }
+        btnOpen.setOnClickListener { openFile() }
+        btnShare.setOnClickListener { shareFile() }
+
+        // Аудіо — ховаємо вибір якості
+        rgFormat.setOnCheckedChangeListener { _, id ->
+            rgQuality.visibility = if (id == R.id.rbAudio) View.INVISIBLE else View.VISIBLE
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkPendingUrl()
+    }
+
+    private fun checkPendingUrl() {
+        val prefs = requireContext().getSharedPreferences("pending", Context.MODE_PRIVATE)
+        val url = prefs.getString("url", null)
+        if (!url.isNullOrBlank()) {
+            etUrl.setText(url)
+            prefs.edit().remove("url").apply()
+        }
+    }
+
+    private fun pasteUrl() {
+        val cb = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val text = cb.primaryClip?.getItemAt(0)?.text?.toString()
+        if (!text.isNullOrBlank()) {
+            etUrl.setText(text)
+        } else {
+            Toast.makeText(requireContext(), "Буфер порожній", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun checkPermAndDownload() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            val perm = Manifest.permission.WRITE_EXTERNAL_STORAGE
+            if (ContextCompat.checkSelfPermission(requireContext(), perm) != PackageManager.PERMISSION_GRANTED) {
+                permLauncher.launch(arrayOf(perm))
+                return
+            }
+        }
+        startDownload()
+    }
+
+    private fun startDownload() {
+        val url = etUrl.text.toString().trim()
+        if (url.isBlank() || !url.startsWith("http")) {
+            Toast.makeText(requireContext(), "Вставте коректне посилання", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!PythonDownloader.isReady()) {
+            Toast.makeText(requireContext(), "Python ще завантажується, зачекайте…", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val format = if (rgFormat.checkedRadioButtonId == R.id.rbAudio) "audio" else "video"
+        val quality = when (rgQuality.checkedRadioButtonId) {
+            R.id.rb1080 -> "1080"
+            R.id.rb720 -> "720"
+            else -> "best"
+        }
+
+        // UI — показуємо прогрес
+        btnDownload.isEnabled = false
+        cardProgress.visibility = View.VISIBLE
+        cardResult.visibility = View.GONE
+        progressBar.progress = 0
+        tvPercent.text = ""
+        tvProgressDetail.text = ""
+        tvStatus.text = "Починаю…"
+
+        // Анімація прогресу (indeterminate поки немає даних)
+        progressBar.isIndeterminate = true
+
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                PythonDownloader.download(
+                    url = url,
+                    format = format,
+                    quality = quality,
+                    onStatus = { msg ->
+                        lifecycleScope.launch { tvStatus.text = msg }
+                    }
+                )
+            }
+
+            btnDownload.isEnabled = true
+            progressBar.isIndeterminate = false
+
+            if (result.success && result.item != null) {
+                val item = result.item
+                lastFilePath = item.filePath
+                lastFormat = item.format
+
+                // Зберігаємо в історію
+                Prefs.addHistory(requireContext(), item)
+
+                // Показуємо результат
+                cardProgress.visibility = View.GONE
+                cardResult.visibility = View.VISIBLE
+                tvResultIcon.text = "✅"
+                tvResultTitle.text = item.title
+                tvResultMeta.text = buildString {
+                    if (item.fileSizeFormatted().isNotBlank()) append("${item.fileSizeFormatted()} • ")
+                    append(item.format.uppercase())
+                    if (format == "video") append(" • $quality")
+                }
+            } else {
+                progressBar.progress = 0
+                tvStatus.text = "❌ ${result.error}"
+                tvPercent.text = ""
+            }
+        }
+    }
+
+    private fun openFile() {
+        val path = lastFilePath ?: return
+        val file = File(path)
+        if (!file.exists()) {
+            Toast.makeText(requireContext(), "Файл не знайдено", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(
+                requireContext(), "${requireContext().packageName}.fileprovider", file
+            )
+            val mime = if (lastFormat == "mp3") "audio/*" else "video/*"
+            startActivity(Intent.createChooser(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, mime)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, "Відкрити у…"
+            ))
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "Немає додатку для відкриття", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareFile() {
+        val path = lastFilePath ?: return
+        val file = File(path)
+        if (!file.exists()) return
+        try {
+            val uri = FileProvider.getUriForFile(
+                requireContext(), "${requireContext().packageName}.fileprovider", file
+            )
+            val mime = if (lastFormat == "mp3") "audio/*" else "video/*"
+            startActivity(Intent.createChooser(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = mime
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, "Поділитись…"
+            ))
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "Помилка", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
