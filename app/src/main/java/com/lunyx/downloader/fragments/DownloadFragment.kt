@@ -138,23 +138,32 @@ class DownloadFragment : Fragment() {
     /** Шукає перше посилання в буфері обміну */
     private fun smartPaste() {
         val cb = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = cb.primaryClip ?: run {
+        val clip = cb.primaryClip
+        if (clip == null || clip.itemCount == 0) {
             Toast.makeText(requireContext(), getString(R.string.clipboard_empty), Toast.LENGTH_SHORT).show()
             return
         }
-        // Шукаємо URL серед усіх елементів буфера
-        for (i in 0 until clip.itemCount) {
-            val text = clip.getItemAt(i)?.coerceToText(requireContext())?.toString() ?: continue
-            // Знаходимо перше http/https посилання в тексті
-            val urlRegex = Regex("https?://[^\\s]+")
-            val match = urlRegex.find(text)
-            if (match != null) {
-                etUrl.setText(match.value)
-                etUrl.setSelection(match.value.length)
-                return
+        // Збираємо весь текст з усіх елементів буфера в один рядок
+        val allText = buildString {
+            for (i in 0 until clip.itemCount) {
+                val part = clip.getItemAt(i)?.coerceToText(requireContext())?.toString()
+                if (!part.isNullOrBlank()) append(part).append(" ")
             }
         }
-        Toast.makeText(requireContext(), getString(R.string.clipboard_empty), Toast.LENGTH_SHORT).show()
+        // Шукаємо ВСІ http/https посилання в тексті
+        val urlRegex = Regex("https?://[^\\s<>"']+")
+        val allUrls = urlRegex.findAll(allText).map { it.value }.toList()
+
+        if (allUrls.isEmpty()) {
+            Toast.makeText(requireContext(), getString(R.string.clipboard_empty), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Якщо одне — вставляємо одразу
+        // Якщо декілька — вибираємо перше (найімовірніше саме те що треба)
+        val url = allUrls.first()
+        etUrl.setText(url)
+        etUrl.setSelection(url.length)
     }
 
     private fun setDownloading(active: Boolean) {

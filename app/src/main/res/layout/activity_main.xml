@@ -25,16 +25,14 @@
             android:textSize="20sp"
             android:fontFamily="sans-serif-medium"/>
 
-        <!-- Python status -->
         <TextView
             android:id="@+id/tvPythonStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="⏳"
-            android:textSize="14sp"
-            android:layout_marginEnd="8dp"/>
+            android:textSize="16sp"
+            android:layout_marginEnd="10dp"/>
 
-        <!-- Settings button -->
         <TextView
             android:id="@+id/btnSettings"
             android:layout_width="36dp"
@@ -59,7 +57,8 @@
         app:tabIndicatorColor="@color/accent"
         app:tabIndicatorHeight="2dp"/>
 
-    <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider"/>
+    <View android:layout_width="match_parent" android:layout_height="1dp"
+        android:background="@color/divider"/>
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/viewPager"
