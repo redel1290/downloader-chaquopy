@@ -92,8 +92,13 @@ def download(url: str, fmt: str, quality: str, output_dir: str) -> str:
                 file_path = mp4 if os.path.exists(mp4) else candidate
             else:
                 # Аудіо — качаємо mp4 і перейменовуємо на .mp3
-                mp4 = os.path.splitext(candidate)[0] + '.mp4'
-                mp3_path = os.path.splitext(candidate)[0] + '.mp3'
+                # Використовуємо rfind щоб знайти останню крапку (правильне розширення)
+                def swap_ext(path, new_ext):
+                    dot = path.rfind('.')
+                    return (path[:dot] + new_ext) if dot != -1 else (path + new_ext)
+
+                mp4 = swap_ext(candidate, '.mp4')
+                mp3_path = swap_ext(candidate, '.mp3')
                 src = mp4 if os.path.exists(mp4) else candidate
                 if os.path.exists(src):
                     os.rename(src, mp3_path)
