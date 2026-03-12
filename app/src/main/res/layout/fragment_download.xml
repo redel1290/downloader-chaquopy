@@ -64,7 +64,6 @@
 
             </LinearLayout>
 
-            <!-- Platform chips -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -96,7 +95,6 @@
                     android:background="@drawable/bg_chip" android:paddingStart="7dp" android:paddingEnd="7dp"
                     android:text="+3" android:textColor="@color/text_secondary" android:textSize="10sp"
                     android:gravity="center"/>
-
             </LinearLayout>
         </LinearLayout>
 
@@ -125,22 +123,17 @@
                     android:letterSpacing="0.12"
                     android:layout_marginBottom="10dp"/>
 
-                <RadioGroup
-                    android:id="@+id/rgFormat"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
-
+                <RadioGroup android:id="@+id/rgFormat"
+                    android:layout_width="match_parent" android:layout_height="wrap_content">
                     <RadioButton android:id="@+id/rbVideo"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:text="🎬 Відео" android:textColor="@color/text_primary"
                         android:textSize="13sp" android:checked="true"
                         android:buttonTint="@color/accent" android:layout_marginBottom="6dp"/>
-
                     <RadioButton android:id="@+id/rbAudio"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:text="🎵 Аудіо MP3" android:textColor="@color/text_primary"
                         android:textSize="13sp" android:buttonTint="@color/accent"/>
-
                 </RadioGroup>
             </LinearLayout>
 
@@ -162,45 +155,57 @@
                     android:letterSpacing="0.12"
                     android:layout_marginBottom="10dp"/>
 
-                <RadioGroup
-                    android:id="@+id/rgQuality"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content">
-
+                <RadioGroup android:id="@+id/rgQuality"
+                    android:layout_width="match_parent" android:layout_height="wrap_content">
                     <RadioButton android:id="@+id/rbBest"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:text="⭐ Найкраща" android:textColor="@color/text_primary"
                         android:textSize="13sp" android:checked="true"
                         android:buttonTint="@color/accent" android:layout_marginBottom="6dp"/>
-
                     <RadioButton android:id="@+id/rb1080"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:text="📺 1080p" android:textColor="@color/text_primary"
-                        android:textSize="13sp" android:buttonTint="@color/accent"
-                        android:layout_marginBottom="6dp"/>
-
+                        android:textSize="13sp" android:buttonTint="@color/accent" android:layout_marginBottom="6dp"/>
                     <RadioButton android:id="@+id/rb720"
                         android:layout_width="wrap_content" android:layout_height="wrap_content"
                         android:text="📱 720p" android:textColor="@color/text_primary"
                         android:textSize="13sp" android:buttonTint="@color/accent"/>
-
                 </RadioGroup>
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Download button -->
-        <TextView
-            android:id="@+id/btnDownload"
+        <!-- Download + Stop -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="52dp"
-            android:background="@drawable/bg_button"
-            android:text="⬇  ЗАВАНТАЖИТИ"
-            android:textColor="@color/white"
-            android:textSize="15sp"
-            android:fontFamily="sans-serif-medium"
-            android:letterSpacing="0.06"
-            android:gravity="center"
-            android:layout_marginBottom="10dp"/>
+            android:orientation="horizontal"
+            android:layout_marginBottom="10dp">
+
+            <TextView
+                android:id="@+id/btnDownload"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/bg_button"
+                android:text="⬇  ЗАВАНТАЖИТИ"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.04"
+                android:gravity="center"
+                android:layout_marginEnd="8dp"/>
+
+            <TextView
+                android:id="@+id/btnStop"
+                android:layout_width="52dp"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_button_stop"
+                android:text="⏹"
+                android:textSize="20sp"
+                android:gravity="center"
+                android:enabled="false"/>
+
+        </LinearLayout>
 
         <!-- Progress card -->
         <LinearLayout
@@ -304,7 +309,6 @@
                         android:textColor="@color/text_secondary"
                         android:textSize="11sp"
                         android:layout_marginTop="2dp"/>
-
                 </LinearLayout>
             </LinearLayout>
 
@@ -335,7 +339,6 @@
                     android:textColor="@color/accent"
                     android:textSize="13sp"
                     android:gravity="center"/>
-
             </LinearLayout>
         </LinearLayout>
 

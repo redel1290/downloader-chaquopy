@@ -5,7 +5,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.*
@@ -19,6 +18,7 @@ import com.lunyx.downloader.R
 import com.lunyx.downloader.utils.Prefs
 import com.lunyx.downloader.utils.PythonDownloader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -28,6 +28,7 @@ class DownloadFragment : Fragment() {
     private lateinit var etUrl: EditText
     private lateinit var btnPaste: TextView
     private lateinit var btnDownload: TextView
+    private lateinit var btnStop: TextView
     private lateinit var rgFormat: RadioGroup
     private lateinit var rgQuality: RadioGroup
     private lateinit var cardProgress: View
@@ -44,6 +45,7 @@ class DownloadFragment : Fragment() {
 
     private var lastFilePath: String? = null
     private var lastFormat: String = "mp4"
+    private var downloadJob: Job? = null
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -59,32 +61,36 @@ class DownloadFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        etUrl = view.findViewById(R.id.etUrl)
-        btnPaste = view.findViewById(R.id.btnPaste)
-        btnDownload = view.findViewById(R.id.btnDownload)
-        rgFormat = view.findViewById(R.id.rgFormat)
-        rgQuality = view.findViewById(R.id.rgQuality)
-        cardProgress = view.findViewById(R.id.cardProgress)
-        cardResult = view.findViewById(R.id.cardResult)
-        tvStatus = view.findViewById(R.id.tvStatus)
-        tvPercent = view.findViewById(R.id.tvPercent)
+        etUrl         = view.findViewById(R.id.etUrl)
+        btnPaste      = view.findViewById(R.id.btnPaste)
+        btnDownload   = view.findViewById(R.id.btnDownload)
+        btnStop       = view.findViewById(R.id.btnStop)
+        rgFormat      = view.findViewById(R.id.rgFormat)
+        rgQuality     = view.findViewById(R.id.rgQuality)
+        cardProgress  = view.findViewById(R.id.cardProgress)
+        cardResult    = view.findViewById(R.id.cardResult)
+        tvStatus      = view.findViewById(R.id.tvStatus)
+        tvPercent     = view.findViewById(R.id.tvPercent)
         tvProgressDetail = view.findViewById(R.id.tvProgressDetail)
-        progressBar = view.findViewById(R.id.progressBar)
-        tvResultIcon = view.findViewById(R.id.tvResultIcon)
+        progressBar   = view.findViewById(R.id.progressBar)
+        tvResultIcon  = view.findViewById(R.id.tvResultIcon)
         tvResultTitle = view.findViewById(R.id.tvResultTitle)
-        tvResultMeta = view.findViewById(R.id.tvResultMeta)
-        btnOpen = view.findViewById(R.id.btnOpen)
-        btnShare = view.findViewById(R.id.btnShare)
+        tvResultMeta  = view.findViewById(R.id.tvResultMeta)
+        btnOpen       = view.findViewById(R.id.btnOpen)
+        btnShare      = view.findViewById(R.id.btnShare)
 
         btnPaste.setOnClickListener { pasteUrl() }
         btnDownload.setOnClickListener { checkPermAndDownload() }
+        btnStop.setOnClickListener { stopDownload() }
         btnOpen.setOnClickListener { openFile() }
         btnShare.setOnClickListener { shareFile() }
 
-        // Аудіо — ховаємо вибір якості
+        // Аудіо — ховаємо якість
         rgFormat.setOnCheckedChangeListener { _, id ->
             rgQuality.visibility = if (id == R.id.rbAudio) View.INVISIBLE else View.VISIBLE
         }
+
+        setDownloading(false)
     }
 
     override fun onResume() {
@@ -104,11 +110,26 @@ class DownloadFragment : Fragment() {
     private fun pasteUrl() {
         val cb = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val text = cb.primaryClip?.getItemAt(0)?.text?.toString()
-        if (!text.isNullOrBlank()) {
-            etUrl.setText(text)
-        } else {
-            Toast.makeText(requireContext(), "Буфер порожній", Toast.LENGTH_SHORT).show()
-        }
+        if (!text.isNullOrBlank()) etUrl.setText(text)
+        else Toast.makeText(requireContext(), "Буфер порожній", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun setDownloading(active: Boolean) {
+        // Кнопка стоп — активна тільки під час завантаження
+        btnStop.isEnabled = active
+        // Блокуємо UI під час завантаження
+        btnDownload.isEnabled = !active
+        etUrl.isEnabled = !active
+        rgFormat.isEnabled = !active
+        rgQuality.isEnabled = !active
+        for (i in 0 until rgFormat.childCount) rgFormat.getChildAt(i).isEnabled = !active
+        for (i in 0 until rgQuality.childCount) rgQuality.getChildAt(i).isEnabled = !active
+        btnPaste.isEnabled = !active
+    }
+
+    private fun stopDownload() {
+        PythonDownloader.cancel()
+        tvStatus.text = "⏹ Зупиняю…"
     }
 
     private fun checkPermAndDownload() {
@@ -129,66 +150,64 @@ class DownloadFragment : Fragment() {
             return
         }
         if (!PythonDownloader.isReady()) {
-            Toast.makeText(requireContext(), "Python ще завантажується, зачекайте…", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Python ще завантажується…", Toast.LENGTH_SHORT).show()
             return
         }
 
         val format = if (rgFormat.checkedRadioButtonId == R.id.rbAudio) "audio" else "video"
         val quality = when (rgQuality.checkedRadioButtonId) {
             R.id.rb1080 -> "1080"
-            R.id.rb720 -> "720"
-            else -> "best"
+            R.id.rb720  -> "720"
+            else        -> "best"
         }
 
-        // UI — показуємо прогрес
-        btnDownload.isEnabled = false
+        setDownloading(true)
         cardProgress.visibility = View.VISIBLE
         cardResult.visibility = View.GONE
-        progressBar.progress = 0
+        progressBar.isIndeterminate = true
         tvPercent.text = ""
         tvProgressDetail.text = ""
         tvStatus.text = "Починаю…"
 
-        // Анімація прогресу (indeterminate поки немає даних)
-        progressBar.isIndeterminate = true
-
-        lifecycleScope.launch {
+        downloadJob = lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
                 PythonDownloader.download(
                     url = url,
                     format = format,
                     quality = quality,
-                    onStatus = { msg ->
-                        lifecycleScope.launch { tvStatus.text = msg }
-                    }
+                    onStatus = { msg -> lifecycleScope.launch { tvStatus.text = msg } }
                 )
             }
 
-            btnDownload.isEnabled = true
+            setDownloading(false)
             progressBar.isIndeterminate = false
 
-            if (result.success && result.item != null) {
-                val item = result.item
-                lastFilePath = item.filePath
-                lastFormat = item.format
-
-                // Зберігаємо в історію
-                Prefs.addHistory(requireContext(), item)
-
-                // Показуємо результат
-                cardProgress.visibility = View.GONE
-                cardResult.visibility = View.VISIBLE
-                tvResultIcon.text = "✅"
-                tvResultTitle.text = item.title
-                tvResultMeta.text = buildString {
-                    if (item.fileSizeFormatted().isNotBlank()) append("${item.fileSizeFormatted()} • ")
-                    append(item.format.uppercase())
-                    if (format == "video") append(" • $quality")
+            when {
+                result.cancelled -> {
+                    cardProgress.visibility = View.GONE
+                    Toast.makeText(requireContext(), "Завантаження скасовано", Toast.LENGTH_SHORT).show()
                 }
-            } else {
-                progressBar.progress = 0
-                tvStatus.text = "❌ ${result.error}"
-                tvPercent.text = ""
+                result.success && result.item != null -> {
+                    val item = result.item
+                    lastFilePath = item.filePath
+                    lastFormat = item.format
+                    Prefs.addHistory(requireContext(), item)
+
+                    cardProgress.visibility = View.GONE
+                    cardResult.visibility = View.VISIBLE
+                    tvResultIcon.text = "✅"
+                    tvResultTitle.text = item.title
+                    tvResultMeta.text = buildString {
+                        if (item.fileSizeFormatted().isNotBlank()) append("${item.fileSizeFormatted()} • ")
+                        append(item.format.uppercase())
+                        if (format == "video") append(" • $quality")
+                    }
+                }
+                else -> {
+                    progressBar.progress = 0
+                    tvStatus.text = "❌ ${result.error}"
+                    tvPercent.text = ""
+                }
             }
         }
     }
@@ -196,21 +215,13 @@ class DownloadFragment : Fragment() {
     private fun openFile() {
         val path = lastFilePath ?: return
         val file = File(path)
-        if (!file.exists()) {
-            Toast.makeText(requireContext(), "Файл не знайдено", Toast.LENGTH_SHORT).show()
-            return
-        }
+        if (!file.exists()) { Toast.makeText(requireContext(), "Файл не знайдено", Toast.LENGTH_SHORT).show(); return }
         try {
-            val uri = FileProvider.getUriForFile(
-                requireContext(), "${requireContext().packageName}.fileprovider", file
-            )
+            val uri = FileProvider.getUriForFile(requireContext(), "${requireContext().packageName}.fileprovider", file)
             val mime = if (lastFormat == "mp3") "audio/*" else "video/*"
-            startActivity(Intent.createChooser(
-                Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, mime)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }, "Відкрити у…"
-            ))
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }, "Відкрити у…"))
         } catch (e: Exception) {
             Toast.makeText(requireContext(), "Немає додатку для відкриття", Toast.LENGTH_SHORT).show()
         }
@@ -221,17 +232,11 @@ class DownloadFragment : Fragment() {
         val file = File(path)
         if (!file.exists()) return
         try {
-            val uri = FileProvider.getUriForFile(
-                requireContext(), "${requireContext().packageName}.fileprovider", file
-            )
+            val uri = FileProvider.getUriForFile(requireContext(), "${requireContext().packageName}.fileprovider", file)
             val mime = if (lastFormat == "mp3") "audio/*" else "video/*"
-            startActivity(Intent.createChooser(
-                Intent(Intent.ACTION_SEND).apply {
-                    type = mime
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }, "Поділитись…"
-            ))
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = mime; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }, "Поділитись…"))
         } catch (e: Exception) {
             Toast.makeText(requireContext(), "Помилка", Toast.LENGTH_SHORT).show()
         }

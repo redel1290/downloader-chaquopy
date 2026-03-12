@@ -14,7 +14,8 @@ object PythonDownloader {
     data class DownloadResult(
         val success: Boolean,
         val item: DownloadItem? = null,
-        val error: String = ""
+        val error: String = "",
+        val cancelled: Boolean = false
     )
 
     fun init(ctx: Context) {
@@ -25,10 +26,17 @@ object PythonDownloader {
 
     fun isReady() = Python.isStarted()
 
+    fun cancel() {
+        try {
+            val py = Python.getInstance()
+            py.getModule("downloader").callAttr("cancel")
+        } catch (e: Exception) { /* ignore */ }
+    }
+
     fun download(
         url: String,
-        format: String,   // "video" | "audio"
-        quality: String,  // "best" | "1080" | "720" | "480"
+        format: String,
+        quality: String,
         onStatus: (String) -> Unit
     ): DownloadResult {
         return try {
@@ -36,19 +44,22 @@ object PythonDownloader {
             val py = Python.getInstance()
             val module = py.getModule("downloader")
 
-            // Папка Downloads телефону
             val downloadsDir = Environment
                 .getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 .absolutePath
 
             onStatus("Завантажую…")
             val resultJson = module.callAttr(
-                "download",
-                url, format, quality, downloadsDir
+                "download", url, format, quality, downloadsDir
             ).toString()
 
             val result = Gson().fromJson(resultJson, JsonObject::class.java)
             val success = result.get("success")?.asBoolean ?: false
+            val error = result.get("error")?.asString ?: ""
+
+            if (error == "Скасовано") {
+                return DownloadResult(success = false, cancelled = true, error = "Скасовано")
+            }
 
             if (success) {
                 val item = DownloadItem(
@@ -61,7 +72,6 @@ object PythonDownloader {
                 )
                 DownloadResult(success = true, item = item)
             } else {
-                val error = result.get("error")?.asString ?: "Невідома помилка"
                 DownloadResult(success = false, error = error)
             }
         } catch (e: PyException) {

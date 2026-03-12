@@ -1,5 +1,6 @@
 package com.lunyx.downloader.fragments
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.*
@@ -22,9 +23,17 @@ class HistoryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         load(view)
+
         view.findViewById<TextView>(R.id.btnClearHistory).setOnClickListener {
-            Prefs.clearHistory(requireContext())
-            load(view)
+            AlertDialog.Builder(requireContext())
+                .setTitle("Очистити історію")
+                .setMessage("Видалити всі записи з історії завантажень?")
+                .setPositiveButton("Видалити") { _, _ ->
+                    Prefs.clearHistory(requireContext())
+                    load(view)
+                }
+                .setNegativeButton("Скасувати", null)
+                .show()
         }
     }
 
@@ -83,10 +92,10 @@ class HistoryAdapter(
 
     inner class VH(v: View) : RecyclerView.ViewHolder(v) {
         val tvPlatform: TextView = v.findViewById(R.id.tvPlatform)
-        val tvTitle: TextView = v.findViewById(R.id.tvTitle)
-        val tvMeta: TextView = v.findViewById(R.id.tvMeta)
-        val tvDate: TextView = v.findViewById(R.id.tvDate)
-        val btnOpen: TextView = v.findViewById(R.id.btnItemOpen)
+        val tvTitle: TextView    = v.findViewById(R.id.tvTitle)
+        val tvMeta: TextView     = v.findViewById(R.id.tvMeta)
+        val tvDate: TextView     = v.findViewById(R.id.tvDate)
+        val btnOpen: TextView    = v.findViewById(R.id.btnItemOpen)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
