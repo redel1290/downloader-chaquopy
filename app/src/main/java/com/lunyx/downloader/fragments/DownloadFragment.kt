@@ -151,7 +151,7 @@ class DownloadFragment : Fragment() {
             }
         }
         // Шукаємо ВСІ http/https посилання в тексті
-        val urlRegex = Regex("https?://[^\\s<>"']+")
+        val urlRegex = Regex("""https?://[^\s<>"']+""")
         val allUrls = urlRegex.findAll(allText).map { it.value }.toList()
 
         if (allUrls.isEmpty()) {
