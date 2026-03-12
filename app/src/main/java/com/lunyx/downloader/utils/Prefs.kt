@@ -8,7 +8,11 @@ import com.lunyx.downloader.model.DownloadItem
 object Prefs {
     private const val NAME = "dl_prefs"
     private const val KEY_HISTORY = "history"
+    private const val KEY_THEME = "theme"
+    private const val KEY_LANG = "lang"
+    private const val KEY_BACKGROUND = "background"
 
+    // History
     fun getHistory(ctx: Context): MutableList<DownloadItem> {
         val json = ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE)
             .getString(KEY_HISTORY, "[]") ?: "[]"
@@ -36,4 +40,23 @@ object Prefs {
         ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE)
             .edit().putString(KEY_HISTORY, Gson().toJson(list)).apply()
     }
+
+    // Settings
+    fun getTheme(ctx: Context): String =
+        ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE).getString(KEY_THEME, "system") ?: "system"
+
+    fun setTheme(ctx: Context, theme: String) =
+        ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE).edit().putString(KEY_THEME, theme).apply()
+
+    fun getLang(ctx: Context): String =
+        ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE).getString(KEY_LANG, "uk") ?: "uk"
+
+    fun setLang(ctx: Context, lang: String) =
+        ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE).edit().putString(KEY_LANG, lang).apply()
+
+    fun getBackground(ctx: Context): Boolean =
+        ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE).getBoolean(KEY_BACKGROUND, true)
+
+    fun setBackground(ctx: Context, value: Boolean) =
+        ctx.getSharedPreferences(NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_BACKGROUND, value).apply()
 }

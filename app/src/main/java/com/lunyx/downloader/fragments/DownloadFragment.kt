@@ -1,12 +1,10 @@
 package com.lunyx.downloader.fragments
 
 import android.Manifest
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
+import android.content.*
 import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Bundle
+import android.net.Uri
+import android.os.*
 import android.view.*
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,12 +13,10 @@ import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.lunyx.downloader.R
+import com.lunyx.downloader.service.DownloadService
 import com.lunyx.downloader.utils.Prefs
 import com.lunyx.downloader.utils.PythonDownloader
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.io.File
 
 class DownloadFragment : Fragment() {
@@ -47,6 +43,27 @@ class DownloadFragment : Fragment() {
     private var lastFormat: String = "mp4"
     private var downloadJob: Job? = null
 
+    // Service binding
+    private var downloadService: DownloadService? = null
+    private var serviceBound = false
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            val b = binder as? DownloadService.LocalBinder ?: return
+            downloadService = b.getService()
+            serviceBound = true
+            // Підключаємо callbacks якщо сервіс вже завантажує
+            if (downloadService?.isDownloading == true) {
+                setDownloading(true)
+                cardProgress.visibility = View.VISIBLE
+                attachServiceCallbacks()
+            }
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            downloadService = null
+            serviceBound = false
+        }
+    }
+
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
@@ -61,36 +78,47 @@ class DownloadFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        etUrl         = view.findViewById(R.id.etUrl)
-        btnPaste      = view.findViewById(R.id.btnPaste)
-        btnDownload   = view.findViewById(R.id.btnDownload)
-        btnStop       = view.findViewById(R.id.btnStop)
-        rgFormat      = view.findViewById(R.id.rgFormat)
-        rgQuality     = view.findViewById(R.id.rgQuality)
-        cardProgress  = view.findViewById(R.id.cardProgress)
-        cardResult    = view.findViewById(R.id.cardResult)
-        tvStatus      = view.findViewById(R.id.tvStatus)
-        tvPercent     = view.findViewById(R.id.tvPercent)
+        etUrl            = view.findViewById(R.id.etUrl)
+        btnPaste         = view.findViewById(R.id.btnPaste)
+        btnDownload      = view.findViewById(R.id.btnDownload)
+        btnStop          = view.findViewById(R.id.btnStop)
+        rgFormat         = view.findViewById(R.id.rgFormat)
+        rgQuality        = view.findViewById(R.id.rgQuality)
+        cardProgress     = view.findViewById(R.id.cardProgress)
+        cardResult       = view.findViewById(R.id.cardResult)
+        tvStatus         = view.findViewById(R.id.tvStatus)
+        tvPercent        = view.findViewById(R.id.tvPercent)
         tvProgressDetail = view.findViewById(R.id.tvProgressDetail)
-        progressBar   = view.findViewById(R.id.progressBar)
-        tvResultIcon  = view.findViewById(R.id.tvResultIcon)
-        tvResultTitle = view.findViewById(R.id.tvResultTitle)
-        tvResultMeta  = view.findViewById(R.id.tvResultMeta)
-        btnOpen       = view.findViewById(R.id.btnOpen)
-        btnShare      = view.findViewById(R.id.btnShare)
+        progressBar      = view.findViewById(R.id.progressBar)
+        tvResultIcon     = view.findViewById(R.id.tvResultIcon)
+        tvResultTitle    = view.findViewById(R.id.tvResultTitle)
+        tvResultMeta     = view.findViewById(R.id.tvResultMeta)
+        btnOpen          = view.findViewById(R.id.btnOpen)
+        btnShare         = view.findViewById(R.id.btnShare)
 
-        btnPaste.setOnClickListener { pasteUrl() }
+        btnPaste.setOnClickListener { smartPaste() }
         btnDownload.setOnClickListener { checkPermAndDownload() }
         btnStop.setOnClickListener { stopDownload() }
         btnOpen.setOnClickListener { openFile() }
         btnShare.setOnClickListener { shareFile() }
 
-        // Аудіо — ховаємо якість
         rgFormat.setOnCheckedChangeListener { _, id ->
             rgQuality.visibility = if (id == R.id.rbAudio) View.INVISIBLE else View.VISIBLE
         }
 
         setDownloading(false)
+
+        // Підключаємось до сервісу якщо він вже запущений
+        val intent = Intent(requireContext(), DownloadService::class.java)
+        requireContext().bindService(intent, serviceConnection, 0)
+    }
+
+    override fun onDestroyView() {
+        if (serviceBound) {
+            requireContext().unbindService(serviceConnection)
+            serviceBound = false
+        }
+        super.onDestroyView()
     }
 
     override fun onResume() {
@@ -107,17 +135,30 @@ class DownloadFragment : Fragment() {
         }
     }
 
-    private fun pasteUrl() {
+    /** Шукає перше посилання в буфері обміну */
+    private fun smartPaste() {
         val cb = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val text = cb.primaryClip?.getItemAt(0)?.text?.toString()
-        if (!text.isNullOrBlank()) etUrl.setText(text)
-        else Toast.makeText(requireContext(), "Буфер порожній", Toast.LENGTH_SHORT).show()
+        val clip = cb.primaryClip ?: run {
+            Toast.makeText(requireContext(), getString(R.string.clipboard_empty), Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Шукаємо URL серед усіх елементів буфера
+        for (i in 0 until clip.itemCount) {
+            val text = clip.getItemAt(i)?.coerceToText(requireContext())?.toString() ?: continue
+            // Знаходимо перше http/https посилання в тексті
+            val urlRegex = Regex("https?://[^\\s]+")
+            val match = urlRegex.find(text)
+            if (match != null) {
+                etUrl.setText(match.value)
+                etUrl.setSelection(match.value.length)
+                return
+            }
+        }
+        Toast.makeText(requireContext(), getString(R.string.clipboard_empty), Toast.LENGTH_SHORT).show()
     }
 
     private fun setDownloading(active: Boolean) {
-        // Кнопка стоп — активна тільки під час завантаження
         btnStop.isEnabled = active
-        // Блокуємо UI під час завантаження
         btnDownload.isEnabled = !active
         etUrl.isEnabled = !active
         rgFormat.isEnabled = !active
@@ -128,7 +169,11 @@ class DownloadFragment : Fragment() {
     }
 
     private fun stopDownload() {
-        PythonDownloader.cancel()
+        if (Prefs.getBackground(requireContext())) {
+            DownloadService.cancel(requireContext())
+        } else {
+            PythonDownloader.cancel()
+        }
         tvStatus.text = "⏹ Зупиняю…"
     }
 
@@ -169,45 +214,72 @@ class DownloadFragment : Fragment() {
         tvProgressDetail.text = ""
         tvStatus.text = "Починаю…"
 
-        downloadJob = lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                PythonDownloader.download(
-                    url = url,
-                    format = format,
-                    quality = quality,
-                    onStatus = { msg -> lifecycleScope.launch { tvStatus.text = msg } }
-                )
+        val useBackground = Prefs.getBackground(requireContext())
+
+        if (useBackground) {
+            // Запускаємо ForegroundService — працює навіть у фоні
+            DownloadService.start(requireContext(), url, format, quality)
+            // Підключаємось до сервісу
+            val intent = Intent(requireContext(), DownloadService::class.java)
+            requireContext().bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            attachServiceCallbacks()
+        } else {
+            // Звичайний coroutine — зупиниться при виході
+            downloadJob = lifecycleScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    PythonDownloader.download(
+                        url = url, format = format, quality = quality,
+                        onStatus = { msg -> lifecycleScope.launch { tvStatus.text = msg } }
+                    )
+                }
+                handleResult(result, format, quality)
             }
+        }
+    }
 
-            setDownloading(false)
-            progressBar.isIndeterminate = false
+    private fun attachServiceCallbacks() {
+        downloadService?.onStatus = { msg ->
+            activity?.runOnUiThread { tvStatus.text = msg }
+        }
+        downloadService?.onResult = { result ->
+            activity?.runOnUiThread {
+                val format = if (rgFormat.checkedRadioButtonId == R.id.rbAudio) "audio" else "video"
+                val quality = when (rgQuality.checkedRadioButtonId) {
+                    R.id.rb1080 -> "1080"; R.id.rb720 -> "720"; else -> "best"
+                }
+                handleResult(result, format, quality)
+            }
+        }
+    }
 
-            when {
-                result.cancelled -> {
-                    cardProgress.visibility = View.GONE
-                    Toast.makeText(requireContext(), "Завантаження скасовано", Toast.LENGTH_SHORT).show()
-                }
-                result.success && result.item != null -> {
-                    val item = result.item
-                    lastFilePath = item.filePath
-                    lastFormat = item.format
-                    Prefs.addHistory(requireContext(), item)
+    private fun handleResult(result: PythonDownloader.DownloadResult, format: String, quality: String) {
+        setDownloading(false)
+        progressBar.isIndeterminate = false
 
-                    cardProgress.visibility = View.GONE
-                    cardResult.visibility = View.VISIBLE
-                    tvResultIcon.text = "✅"
-                    tvResultTitle.text = item.title
-                    tvResultMeta.text = buildString {
-                        if (item.fileSizeFormatted().isNotBlank()) append("${item.fileSizeFormatted()} • ")
-                        append(item.format.uppercase())
-                        if (format == "video") append(" • $quality")
-                    }
+        when {
+            result.cancelled -> {
+                cardProgress.visibility = View.GONE
+                Toast.makeText(requireContext(), getString(R.string.download_cancelled), Toast.LENGTH_SHORT).show()
+            }
+            result.success && result.item != null -> {
+                val item = result.item
+                lastFilePath = item.filePath
+                lastFormat = item.format
+
+                cardProgress.visibility = View.GONE
+                cardResult.visibility = View.VISIBLE
+                tvResultIcon.text = "✅"
+                tvResultTitle.text = item.title
+                tvResultMeta.text = buildString {
+                    if (item.fileSizeFormatted().isNotBlank()) append("${item.fileSizeFormatted()} • ")
+                    append(item.format.uppercase())
+                    if (format == "video") append(" • $quality")
                 }
-                else -> {
-                    progressBar.progress = 0
-                    tvStatus.text = "❌ ${result.error}"
-                    tvPercent.text = ""
-                }
+            }
+            else -> {
+                progressBar.progress = 0
+                tvStatus.text = "❌ ${result.error}"
+                tvPercent.text = ""
             }
         }
     }

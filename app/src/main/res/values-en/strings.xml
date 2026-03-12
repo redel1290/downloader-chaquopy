@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Downloader</string>
+    <string name="hint_url">Paste video link…</string>
+    <string name="btn_paste">Paste</string>
+    <string name="btn_download">⬇  DOWNLOAD</string>
+    <string name="btn_stop">⏹  STOP</string>
+    <string name="tab_download">⬇ Download</string>
+    <string name="tab_history">📋 History</string>
+    <string name="platforms">YouTube • TikTok • Instagram • Twitter/X • Twitch • SoundCloud • Vimeo • Facebook</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_lang_uk">Ukrainian</string>
+    <string name="settings_lang_en">English</string>
+    <string name="settings_background">Background download</string>
+    <string name="settings_background_desc">Continue downloading when minimized</string>
+    <string name="clipboard_empty">No links found in clipboard</string>
+    <string name="confirm_clear_title">Clear history</string>
+    <string name="confirm_clear_msg">Delete all history entries?</string>
+    <string name="confirm_clear_yes">Delete</string>
+    <string name="confirm_clear_no">Cancel</string>
+    <string name="downloading_notification">Downloading…</string>
+    <string name="download_cancelled">Download cancelled</string>
+    <string name="channel_name">Downloads</string>
+</resources>
