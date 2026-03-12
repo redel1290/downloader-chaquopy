@@ -31,8 +31,8 @@ def detect_platform(url: str) -> str:
 
 def get_format_string(fmt: str, quality: str) -> str:
     if fmt == 'audio':
-        # Качаємо тільки аудіо потік, потім перейменуємо на .mp3
-        return 'bestaudio[ext=m4a]/bestaudio'
+        # Качаємо те саме відео що і в відео режимі, потім перейменуємо на .mp3
+        return 'bestvideo+bestaudio/best'
 
     q_map = {'1080': 1080, '720': 720, '480': 480}
     max_h = q_map.get(quality, 9999)
@@ -91,10 +91,12 @@ def download(url: str, fmt: str, quality: str, output_dir: str) -> str:
                 mp4 = os.path.splitext(candidate)[0] + '.mp4'
                 file_path = mp4 if os.path.exists(mp4) else candidate
             else:
-                # Аудіо — перейменовуємо на .mp3
+                # Аудіо — качаємо mp4 і перейменовуємо на .mp3
+                mp4 = os.path.splitext(candidate)[0] + '.mp4'
                 mp3_path = os.path.splitext(candidate)[0] + '.mp3'
-                if os.path.exists(candidate):
-                    os.rename(candidate, mp3_path)
+                src = mp4 if os.path.exists(mp4) else candidate
+                if os.path.exists(src):
+                    os.rename(src, mp3_path)
                 file_path = mp3_path
 
         # Fallback — найновіший файл у папці
